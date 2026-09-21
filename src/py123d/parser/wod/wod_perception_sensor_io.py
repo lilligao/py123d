@@ -119,19 +119,64 @@ def load_wod_perception_camera_panoptic_labels(
     return semantic_label, instance_label
 
 
+def _convert_range_image_to_point_cloud_with_beam_row(
+    frame: dataset_pb2.Frame,
+    range_images: Dict,
+    range_image_top_pose,
+    ri_index: int = 0,
+    keep_polar_features: bool = False,
+) -> Tuple[list, list]:
+    """Same as frame_utils.convert_range_image_to_point_cloud, but ALSO returns each point's ROW index
+    (0-indexed) in its lidar's native range image -- i.e. which beam/channel it came from.
+
+    frame_utils.convert_range_image_to_point_cloud computes exactly this (`tf.compat.v1.where(
+    range_image_mask)` gives (row, col) per kept point) but only keeps it long enough to `gather_nd` the
+    Cartesian points, then discards it. We can't get it back after the fact -- a point's (x,y,z) doesn't
+    uniquely determine which beam fired it -- so this is a small local duplicate of that function's loop
+    (not an edit to the vendored frame_utils.py) that captures the row half of the same `where(...)`
+    result before it's consumed. Mirrors `_extract_wod_perception_point_segmentation` above, which
+    already uses this identical pattern to align per-point segmentation labels.
+
+    :return: (points, beam_rows), both lists of per-laser numpy arrays in the SAME
+        sorted-by-calibration-name order frame_utils.convert_range_image_to_point_cloud uses (which
+        load_wod_perception_point_cloud_data_from_frame below already assumes matches `frame.lasers`
+        order for its `lidar_ids` tagging).
+    """
+    calibrations = sorted(frame.context.laser_calibrations, key=lambda c: c.name)
+    points = []
+    beam_rows = []
+
+    cartesian_range_images = frame_utils.convert_range_image_to_cartesian(
+        frame, range_images, range_image_top_pose, ri_index, keep_polar_features
+    )
+
+    for c in calibrations:
+        range_image = range_images[c.name][ri_index]
+        range_image_tensor = tf.reshape(tf.convert_to_tensor(value=range_image.data), range_image.shape.dims)
+        range_image_mask = range_image_tensor[..., 0] > 0
+
+        range_image_cartesian = cartesian_range_images[c.name]
+        mask_indices = tf.compat.v1.where(range_image_mask)  # [N, 2] = (row, col), row = beam index
+        points_tensor = tf.gather_nd(range_image_cartesian, mask_indices)
+
+        points.append(points_tensor.numpy())
+        beam_rows.append(mask_indices[:, 0].numpy())
+
+    return points, beam_rows
+
+
 def load_wod_perception_point_cloud_data_from_frame(
     frame: dataset_pb2.Frame,
     keep_polar_features: bool = True,
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """Loads Waymo Open Dataset (WOD) - Perception Lidar point clouds from a Waymo Frame object."""
 
-    (range_images, camera_projections, seg_labels, range_image_top_pose) = parse_range_image_and_camera_projection(
+    (range_images, _camera_projections, seg_labels, range_image_top_pose) = parse_range_image_and_camera_projection(
         frame
     )
-    points, _ = frame_utils.convert_range_image_to_point_cloud(
+    points, beam_rows = _convert_range_image_to_point_cloud_with_beam_row(
         frame=frame,
         range_images=range_images,
-        camera_projections=camera_projections,
         range_image_top_pose=range_image_top_pose,
         keep_polar_features=keep_polar_features,
     )
@@ -141,6 +186,9 @@ def load_wod_perception_point_cloud_data_from_frame(
 
     # Concat all lidar points.
     all_lidar_data = np.concatenate(points, axis=0)
+    # Each point's row (0-indexed) in ITS OWN lidar's native range image -- i.e. which beam/channel fired
+    # it. beam_rows is already per-laser, same order/lengths as points, so this concats 1:1 with it.
+    all_beam_rows = np.concatenate(beam_rows, axis=0).astype(np.uint8)
 
     # Load features and point cloud
     lidar_ids = np.zeros(all_lidar_data.shape[0], dtype=np.uint8)
@@ -159,11 +207,13 @@ def load_wod_perception_point_cloud_data_from_frame(
             LidarFeature.INTENSITY.serialize(): (all_lidar_data[:, 1] * 255).astype(np.uint8),
             LidarFeature.ELONGATION.serialize(): all_lidar_data[:, 2].astype(np.float32),
             LidarFeature.IDS.serialize(): lidar_ids,
+            LidarFeature.CHANNEL.serialize(): all_beam_rows,
         }
     else:
         point_cloud_3d = all_lidar_data[:, :3]  # Extract XYZ from the concatenated Lidar data.
         point_cloud_features = {
             LidarFeature.IDS.serialize(): lidar_ids,
+            LidarFeature.CHANNEL.serialize(): all_beam_rows,
         }
 
     # Per-point 3D semantic segmentation, only on frames Waymo annotated (sparse). The TOP-only seg
