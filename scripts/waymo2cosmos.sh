@@ -7,8 +7,8 @@
 # never mixed up with 3600-col tars. The converter skips clips whose tar already exists.
 cd /mnt/efs/users/lili.gao/Repos/cosmos-drive-dreams
 P=/mnt/efs/users/lili.gao/environments/py123d/bin/python
-N_COLS=${N_COLS:-2656}
-OUT_ROOT=/batch10/py123d/waymo/cosmos-transfer-lidargen/datasets
+N_COLS=${N_COLS:-3600}
+OUT_ROOT=/batch10/lili.gao/cosmos-lidargen/datasets/waymo
 
 # val(并行 4 shard)
 for s in 0 1 2 3; do

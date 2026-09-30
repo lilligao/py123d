@@ -74,13 +74,17 @@ class TruckDriveDatasetParser(BaseDatasetParser):
                     split,
                 )
                 continue
-            parsers.append(
-                TruckDriveLogParser(
-                    data_root=self._data_root,
-                    scene_name=scene_name,
-                    split=split,
+            try:
+                parsers.append(
+                    TruckDriveLogParser(
+                        data_root=self._data_root,
+                        scene_name=scene_name,
+                        split=split,
+                    )
                 )
-            )
+            except FileNotFoundError as e:
+                logger.warning("Skipping log parser for scene %s, missing file: %s", scene_name, e)
+                continue
         return parsers
 
     def get_map_parsers(self) -> List[BaseMapParser]:
@@ -88,13 +92,17 @@ class TruckDriveDatasetParser(BaseDatasetParser):
         parsers: List[BaseMapParser] = []
         for scene_name in self._scene_names:
             split = self._split_override or resolve_truckdrive_split(scene_name)
-            parsers.append(
-                TruckDriveMapParser(
-                    data_root=self._data_root,
-                    scene_name=scene_name,
-                    split=split,
+            try:
+                parsers.append(
+                    TruckDriveMapParser(
+                        data_root=self._data_root,
+                        scene_name=scene_name,
+                        split=split,
+                    )
                 )
-            )
+            except FileNotFoundError as e:
+                logger.warning("Skipping map parser for scene %s, missing file: %s", scene_name, e)
+                continue
         return parsers
 
     def __del__(self) -> None:

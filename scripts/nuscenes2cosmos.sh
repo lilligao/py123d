@@ -15,7 +15,7 @@ P=/mnt/efs/users/lili.gao/environments/py123d/bin/python
 for s in 0 1 2 3 4 5 6 7; do
   $P cosmos-drive-dreams-toolkits/convert_py123d_to_rangemap.py \
     -i /batch10/py123d/nuscenes/logs/nuscenes_val \
-    -o /batch10/py123d/nuscenes/cosmos-transfer-lidargen/datasets/py123d_nuscenes_val_rie \
+    -o /batch10/lili.gao/cosmos-lidargen/datasets/nuscenes/py123d_nuscenes_val_rie \
     --dataset nuscenes --mode ri --n_rows 32 --lidar_length 41 --num_shards 8 --shard_id $s &
 done; wait
 
@@ -27,6 +27,6 @@ P=/mnt/efs/users/lili.gao/environments/py123d/bin/python
 for s in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   $P cosmos-drive-dreams-toolkits/convert_py123d_to_rangemap.py \
     -i /batch10/py123d/nuscenes/logs/nuscenes_train \
-    -o /batch10/py123d/nuscenes/cosmos-transfer-lidargen/datasets/py123d_nuscenes_train_rie \
+    -o /batch10/lili.gao/cosmos-lidargen/datasets/nuscenes/py123d_nuscenes_train_rie \
     --dataset nuscenes --mode ri --n_rows 32 --lidar_length 41 --num_shards 16 --shard_id $s &
 done; wait

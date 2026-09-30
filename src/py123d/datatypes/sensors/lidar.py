@@ -71,6 +71,13 @@ class LidarFeature(SerialIntEnum):
     INSTANCE = 7
     """Per-point instance id feature index, for panoptic segmentation. 0 means no instance."""
 
+    COLUMN = 8
+    """Per-point COLUMN (0-indexed) in its lidar's native range image -- the azimuth index at which the
+    beam fired. Together with CHANNEL (the row) this pins a point to its exact native range-image pixel,
+    which cannot be recovered afterwards: the exported xyz are motion-compensated to the frame pose, so a
+    point's geometric azimuth is no longer its firing azimuth. Only datasets that ship a real range image
+    can provide it (Waymo); ring-based datasets (nuScenes, AV2, nuPlan) have CHANNEL but no COLUMN."""
+
 
 LIDAR_FEATURE_DTYPES: Dict[LidarFeature, Type] = {
     LidarFeature.IDS: np.uint8,
@@ -81,6 +88,7 @@ LIDAR_FEATURE_DTYPES: Dict[LidarFeature, Type] = {
     LidarFeature.ELONGATION: np.float32,
     LidarFeature.SEMANTIC: np.uint8,
     LidarFeature.INSTANCE: np.uint16,
+    LidarFeature.COLUMN: np.uint16,  # native range images are wider than 255 columns (Waymo TOP: 2650)
 }
 
 
@@ -342,6 +350,15 @@ class Lidar(BaseModality):
         if self._point_cloud_features is not None and key in self._point_cloud_features:
             channel = self._point_cloud_features[key].astype(np.uint8)  # type: ignore
         return channel
+
+    @property
+    def column(self) -> Optional[npt.NDArray[np.uint16]]:
+        """The point cloud as an Nx1 array of native range-image column indices, if available."""
+        column: Optional[npt.NDArray[np.uint16]] = None
+        key = LidarFeature.COLUMN.serialize()
+        if self._point_cloud_features is not None and key in self._point_cloud_features:
+            column = self._point_cloud_features[key].astype(np.uint16)  # type: ignore
+        return column
 
     @property
     def timestamps(self) -> Optional[npt.NDArray[np.int64]]:
